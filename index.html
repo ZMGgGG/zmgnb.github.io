@@ -60,7 +60,7 @@
         #controls {
             flex: 1;
             padding: 20px;
-            background: rgba(255, 255, 255, 0.95);
+            background: rgba(255, 255, 255, 0.3);
             -webkit-backdrop-filter: blur(8px); /* Safari 9+ */
             backdrop-filter: blur(8px); /* 其他现代浏览器 */
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
@@ -255,6 +255,7 @@
             }
 
             #controls {
+                background-color: rgba(255, 255, 255, 0.5); 
                 max-height: 38px;
                 overflow: hidden;
                 transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -263,7 +264,8 @@
             }
 
             #controls.expanded {
-                max-height: 70vh;
+                background-color: rgba(255, 255, 255, 0.5);
+                max-height: 80vh;
                 scrollbar-width: thin;
                 scrollbar-color: #888 #f5f5f5;
                 overflow-y: auto;
@@ -489,7 +491,7 @@
                 L.control.scale().addTo(this.map);
             }
 
-            // 新增动态功能初始化
+            // 动态功能初始化
             initDynamicFeatures() {
                 this.restoreSavedCities();
                 this.initScrollListener();
@@ -638,7 +640,7 @@
             // 动态渲染城市列表
             _renderCityList(cities) {
                 const container = document.getElementById('citySelect');
-                // 保留默认的“请选择城市”选项
+                // 保留“请选择城市”选项
                 const existingOptions = Array.from(container.options).filter(opt => opt.value === '');
                 const newOptions = cities.map((city, index) =>
                     `<option value="${index}" class="virtual-scroll-item">
