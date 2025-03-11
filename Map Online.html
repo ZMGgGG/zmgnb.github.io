@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>实时天气监控地图</title>
+    
+    <!-- Leaflet 核心资源 -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <!-- 插件资源 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.fullscreen/2.4.0/Control.FullScreen.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet.fullscreen/2.4.0/Control.FullScreen.min.js"></script>
+    
+    <!-- Locate Control 插件 -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet.locatecontrol@0.72.0/dist/L.Control.Locate.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/leaflet.locatecontrol@0.72.0/dist/L.Control.Locate.min.js"></script>
+   
+   <style>
+        /* 整合后的样式 */
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+        #container {
+            display: flex;
+            gap: 20px;
+            height: 90vh;
+        }
+        #map {
+            flex: 3;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        }
+        #controls {
+            flex: 1;
+            padding: 20px;
+            background: #f5f5f5;
+            border-radius: 8px;
+        }
+        .weather-marker {
+            background: rgba(255,255,255,0.9);
+            padding: 5px;
+            border-radius: 4px;
+            text-align: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+        .leaflet-control-fullscreen a {
+            position: relative;
+            padding-right: 60px ; /* 留出文字空间 */
+        }
+        .leaflet-control-locate a {
+            font-size: 14px ;
+            color: #333 ;
+            padding-left: 30px ; /* 避免图标和文字重叠 */
+        }
+        .wind-arrow {
+            display: inline-block;
+            transition: transform 0.5s ease;
+            font-size: 18px;
+        }
+       /* 添加文字标识 */  
+       #map .leaflet-control-fullscreen.leaflet-bar.leaflet-control a::after {
+            content: "全屏" ;
+            display: inline-block;
+            opacity: 1 ; 
+            position: absolute ;
+            right: 30px ;
+            top: 50% ;
+            transform: translateY(-50%) ;
+            font-size: 14px ;
+            color: #333 ;
+        }
+
+        /* 移动端调整 */
+        @media (max-width: 480px) {
+         #container {
+            flex-direction: column;  /* 垂直排列 */
+            height: auto;           /* 自动高度 */
+            padding: 10px;
+            font-size: 14px;
+            }
+        #map {
+            height: calc(100vh - 200px);       
+            flex: none;              /* 取消弹性比例 */
+            }
+        #controls {
+            max-height: 38px;          /* 初始高度仅显示标题 */
+            overflow: hidden;          /* 隐藏超出内容 */
+            transition: max-height 0.3s ease; /* 过渡动画 */
+            cursor: pointer;           /* 显示可点击手势 */
+            background: #f5f5f5;       /* 保持背景一致 */
+            border-radius: 8px;        /* 圆角 */
+            will-change: max-height;
+            -webkit-overflow-scrolling: touch; /* 启用惯性滚动 */
+            touch-action: manipulation; /* 优化触控响应 */
+            }
+        #controls #citySelect #citySearch,
+        #controls #weatherDetails {
+            margin: 12px 8px;         /* 统一左右边距 */
+            }
+        #weatherDetails p {
+            font-size: 12px;           /* 段落间距优化 */
+            line-height: 1.4;
+            margin: 6px 0; 
+            }
+        #controls.expanded {
+            max-height: 500px;         /* 展开后的最大高度 */
+            overflow-y: auto;
+            }
+        #controls h2 {
+            margin: 0;                 /* 去除默认边距 */
+            padding: 10px;             /* 增加点击区域 */
+            background: #e0e0e0;       /* 标题背景色 */
+            border-radius: 8px;        /* 圆角 */
+            position: relative; 
+            }
+        #controls h2::after {
+            content: "▼";              /* 添加折叠指示箭头 */
+            float: right;
+            margin-right: 8px;  
+            font-size: 14px;
+            transition: transform 0.3s;
+            }
+        #controls.expanded h2::after {
+            transform: rotate(180deg); /* 展开时箭头翻转 */
+            }
+        #citySearch, #citySelect {
+             width: calc(100% - 20px); /* 补偿父容器padding */
+             padding: 11px 10px;       /* 视觉高度统一 */
+             font-family: Arial, sans-serif; /* 强制统一字体 */
+             line-height: 1.2;         /* 统一文本基线 */
+             -webkit-appearance: none; /* 移除原生样式 */
+             -moz-appearance: none;
+             appearance: none;
+            }
+            #citySearch {
+            margin-top: 15px;    /* 与标题间距 */
+            margin-bottom: 10px;  /* 与下拉框间距 */
+            }
+       }
+        
+        /* 移动端隐藏文字 */
+        @media (max-width: 768px) {
+         #map .leaflet-control-fullscreen a::after {
+            font-size: 12px !important;  /* 缩小字体 */
+            right: 10px !important;      /* 调整位置 */
+            }
+        } 
+ 
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="map"></div>
+        <div id="controls">
+        <div id="weatherAlerts" style="display: none; background: #ffdddd; padding: 10px; margin-bottom: 10px; border-radius: 4px;">
+            <span id="alertText"></span>
+        </div>
+            <h2>城市控制面板</h2>
+            <input type="text" id="citySearch" placeholder="搜索城市..." style="width: 100%; padding: 8px; margin-bottom: 10px;">
+            <select id="citySelect" style="width: 100%; padding: 8px; margin-bottom: 20px;">
+                <option value="">请选择城市</option>
+            </select>
+            <div id="weatherDetails">
+                <h3>实时天气</h3>
+                <p>城市: <span id="cityName">-</span></p>
+                <p>温度: <span id="temp">-</span>℃(体感 <span id="feelsLike">-</span>℃)</p>
+                <p>湿度: <span id="humidity">-</span>%</p>
+                <p>风速: <span id="wind">-</span>m/s (风向: <span id="windDir">-</span>)</p>
+                <p>气压: <span id="pressure">-</span>hPa</p>
+                <p>能见度: <span id="visibility">-</span>公里</p>
+                <p>天气状况: <span id="weather">-</span></p>
+                <p style="color: #666; font-size: 12px;">更新时间: <span id="updateTime">-</span></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+      // 获得城市数据
+        class WeatherMap {
+            constructor() {
+                 this.API_KEY = '00315469b065aff255da4d05b7b58d3c'; // API密钥
+                 this.API_URL = 'https://api.openweathermap.org/data/2.5/weather';  
+                 this.cities = [
+                    { city: "北京", coordinates: [39.9042, 116.4074] },
+                    { city: "上海", coordinates: [31.2304, 121.4737] },
+                    { city: "广州", coordinates: [23.1291, 113.2644] },
+                    { city: "成都", coordinates: [30.5728, 104.0668] },
+                    { city: "南京", coordinates: [32.0603, 118.7969] },
+                    { city: "武汉", coordinates: [30.5928, 114.3052] },
+                    { city: "贵阳", coordinates: [26.6470, 106.6302] },
+                    { city: "乌鲁木齐", coordinates: [43.8256, 87.6168] },
+                    { city: "华盛顿（美国）", coordinates: [38.9072, -77.0369] }, 
+                    { city: "首尔（韩国）", coordinates: [37.5665, 126.9780] },
+                    { city: "东京都（日本）", coordinates: [35.6895, 139.6917] }, 
+                    { city: "渥太华（加拿大）", coordinates: [45.4215, -75.6972] }, 
+                    { city: "堪培拉（澳大利亚）", coordinates: [-35.2809, 149.1300] }, 
+                    { city: "莫斯科（俄罗斯）", coordinates: [55.7558, 37.6173] },   
+                    { city: "伦敦（英国）", coordinates: [51.5074, -0.1278] },
+                    { city: "巴黎（法国）", coordinates: [48.8566, 2.3522] }, 
+                    { city: "柏林（德国）", coordinates: [52.5200, 13.4050] },
+                    { city: "墨西哥城（墨西哥）", coordinates: [19.4326, -99.1332] },  
+                    { city: "新德里（印度）", coordinates: [28.6139, 77.2090] },
+                    { city: "开罗（埃及）", coordinates: [30.0444, 31.2357] },
+                    { city: "新加坡（新加坡）", coordinates: [1.3521, 103.8198] },  
+                    { city: "越南（河内市）", coordinates: [21.0285, 105.8542] },
+                    { city: "马尼拉（菲律宾）", coordinates: [14.5995, 120.9842] },
+                    { city: "内罗毕（肯尼亚）", coordinates: [-1.2864, 36.8172] },
+                    { city: "约翰内斯堡（南非）", coordinates: [-26.2041, 28.0473] },
+                    { city: "拉巴特（摩洛哥）", coordinates: [34.0209, -6.8416] },
+                    { city: "巴西利亚（巴西）", coordinates: [-15.7942, -47.8822] },
+                    { city: "圣彼得堡（俄罗斯）", coordinates: [59.9339, 30.3061] }, 
+                ];
+                 
+        // 更新天气图标映射
+            this.weatherIcons = {
+                'Clear': '☀️',
+                'Rain': '🌧️',
+                'Clouds': '☁️',
+                'Snow': '❄️',
+                'Thunderstorm': '⛈️',
+                'Drizzle': '🌦️',
+                'Mist': '🌫️',
+                'Smoke': '💨',
+                'Haze': '😶🌫️',
+                'Dust': '💨',
+                'Fog': '🌁'
+                };
+
+            this.markers = new Map(); // 使用 Map 存储标记，键为城市名称    
+            this.initMap();
+            this.initControls();
+            this.startAutoUpdate();
+            }
+
+        // 地图初始化        
+            initMap() {
+                this.map = L.map('map', {
+                 center: [35.0, 105.0],
+                 zoom: 4,
+                 fullscreenControl: true
+                });
+
+        // 基础图层配置
+            const baseLayers = {
+                "标准地图": L.tileLayer('https://tile-a.openstreetmap.fr/hot/{z}/{x}/{y}.png', {
+                    attribution: '© OpenStreetMap',
+                    noWrap: true
+                }),
+                "卫星地图": L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{
+                    attribution: '© Esri',
+                    noWrap: true
+                })
+                };
+
+                baseLayers["标准地图"].addTo(this.map);
+                L.control.layers(baseLayers).addTo(this.map);
+                L.control.scale().addTo(this.map);
+            }
+
+        // 控件初始化
+            initControls() {
+                const select = document.getElementById('citySelect');
+                this.cities.forEach((city, index) => {
+                    const option = document.createElement('option');
+                    option.value = index;
+                    option.textContent = city.city;
+                    select.appendChild(option);
+                });
+
+                select.addEventListener('change', (e) => {
+                    const index = e.target.value;
+                    if (index!== '') {
+                        const city = this.cities[index];
+                        this.map.flyTo(city.coordinates, 10);
+                    }
+                });
+
+                document.getElementById('citySearch').addEventListener('input', (e) => {
+                    const searchTerm = e.target.value.toLowerCase();
+                    const options = document.getElementById('citySelect').options;
+                    Array.from(options).forEach(option => {
+                    option.style.display = option.textContent.toLowerCase().includes(searchTerm) ? 'block' : 'none';
+                    });
+               });
+            }
+
+        // 天气数据获取逻辑
+             async fetchWeatherData(city) {
+                 try {
+                     const response = await fetch(
+                     `${this.API_URL}?lat=${city.coordinates[0]}&lon=${city.coordinates[1]}&units=metric&lang=zh_cn&appid=${this.API_KEY}`
+                    );
+            const data = await response.json();
+            return {
+                ...city,
+                temperature: Math.round(data.main.temp),
+                feels_like: Math.round(data.main.feels_like), // 体感温度
+                humidity: data.main.humidity,
+                pressure: data.main.pressure, // 气压
+                wind_speed: data.wind.speed,  // 风速
+                wind_deg: data.wind.deg,      // 风向角度
+                visibility: data.visibility/1000, // 能见度（公里）
+                weather: data.weather[0].description,
+                iconCode: data.weather[0].icon
+            };
+        } catch (error) {
+                 console.error('获取天气数据失败:', error);
+                 showToast('天气数据更新失败，请重试！')
+                 return null;
+        }
+            if (data.weather === 'Thunderstorm') {
+            document.getElementById('weatherAlerts').style.display = 'block';
+            document.getElementById('alertText').textContent = `⚠️ ${city.city} 有雷暴天气！`;
+}
+    }
+
+        //   更新所有城市的天气标记
+            //   1. 清除旧标记
+            //   2. 并发请求数据
+            //   3. 过滤无效数据后创建新标记
+             async updateMarkers() {
+             if (!this.markerLayer) {
+             this.markerLayer = L.layerGroup().addTo(this.map);
+            }
+
+         const promises = this.cities.map(city => this.fetchWeatherData(city));
+         const weatherData = await Promise.all(promises);
+         const validData = weatherData.filter(data => data);
+
+        // 临时存储当前需要显示的城市键名
+         const currentCityKeys = new Set();
+
+         validData.forEach(data => {
+         const cityKey = data.city;
+         currentCityKeys.add(cityKey);
+
+        // 如果标记已存在，则更新内容
+         if (this.markers.has(cityKey)) {
+         const existingMarker = this.markers.get(cityKey);
+         const existingData = existingMarker.data; // 从标记中获取旧数据
+
+        // 检查数据是否有变化
+         if (
+         existingData.temperature !== data.temperature ||
+         existingData.weather !== data.weather
+         ) {
+        // 更新图标和弹窗
+         existingMarker.setIcon(this._createMarkerIcon(data));
+         existingMarker.setPopupContent(this._createPopupContent(data));
+         existingMarker.data = data; // 更新存储的数据
+        }
+    } else {
+        // 创建新标记并缓存
+         const marker = this._createMarker(data);
+         this.markers.set(cityKey, marker);
+         this.markerLayer.addLayer(marker);
+        }
+    });
+
+        // 移除已删除的城市标记（如果城市列表动态变化）
+         this.markers.forEach((marker, cityKey) => {
+         if (!currentCityKeys.has(cityKey)) {
+         this.markerLayer.removeLayer(marker);
+         this.markers.delete(cityKey);
+        }
+  });
+
+  
+}
+
+        // 创建标记图标
+         _createMarkerIcon(data) {
+            const tempColor = data.temperature > 30 ? '#ff4444' : 
+                              data.temperature < 10 ? '#4488ff' : '#666';
+          return L.divIcon({
+            className: 'weather-marker',
+            html: `
+               <div style="font-size:24px; color:${tempColor}">
+                ${this.weatherIcons[data.weather] || '⛅'}
+               </div>
+               <div style="font-size:14px; color:${tempColor}">
+                ${data.temperature}℃
+               </div>
+            `
+            });
+        }
+
+        // 创建弹窗内容
+         _createPopupContent(data) {
+         return `
+         <b>${data.city}</b><br>
+          温度: ${data.temperature}℃<br>
+           湿度: ${data.humidity}%<br>
+            天气: ${data.weather}
+             <img src="https://openweathermap.org/img/wn/${data.iconCode}.png" alt="天气图标">
+     `;
+}
+
+        // 新增风向转换方法
+         _getWindDirection(degrees) {
+         const directions = ['北', '东北', '东', '东南', '南', '西南', '西', '西北'];
+         return directions[Math.round(degrees / 45) % 8];
+}
+
+        // 创建完整标记对象
+         _createMarker(data) {
+         const marker = L.marker(data.coordinates, {
+         icon: this._createMarkerIcon(data)
+         }).bindPopup(this._createPopupContent(data));
+
+         // 存储当前数据到标记对象
+         marker.data = data;
+
+         // 绑定点击事件
+         marker.on('click', () => {
+         document.getElementById('cityName').textContent = data.city;
+         document.getElementById('temp').textContent = data.temperature;
+         document.getElementById('feelsLike').textContent = data.feels_like;
+         document.getElementById('humidity').textContent = data.humidity;
+         document.getElementById('wind').textContent = data.wind_speed;
+         document.getElementById('windDir').textContent = this._getWindDirection(data.wind_deg);
+         document.getElementById('pressure').textContent = data.pressure;
+         document.getElementById('visibility').textContent = data.visibility;
+         document.getElementById('weather').textContent = data.weather;
+         document.getElementById('updateTime').textContent = new Date().toLocaleString();
+         });
+
+           return marker;
+}
+
+            startAutoUpdate() {
+                this.updateMarkers();
+                this.intervalId = setInterval(() => this.updateMarkers(), 900000);
+            }
+
+        }
+            // 初始化应用
+             window.onload = () => {
+             const weatherMap = new WeatherMap();
+            
+            // 添加定位功能
+            if (navigator.geolocation) {
+                var locateControl = L.control.locate({
+                    position: 'bottomright',
+                    strings: {
+                        title: "📍定位我的位置"
+                    }, icon: 'fa fa-map-marker-alt',  
+                    showPopup: false,
+                    onLocationError: function(e) {
+                        alert("无法获取位置信息: " + e.message);
+                    }
+                }).addTo(weatherMap.map);
+            }
+
+            // 页面关闭时清除定时器
+             window.onbeforeunload = () => {
+             if (weatherMap.intervalId) {
+             clearInterval(weatherMap.intervalId);
+        }
+    };
+
+            // 控制面板折叠逻辑
+             const controlsPanel = document.getElementById('controls');
+             const panelTitle = controlsPanel.querySelector('h2');
+
+            // 点击标题切换展开/折叠
+            panelTitle.addEventListener('click', function(e) {
+            e.stopPropagation(); // 阻止事件冒泡
+            controlsPanel.classList.toggle('expanded');
+  
+            if (controlsPanel.classList.contains('expanded')) {
+             setTimeout(() => {
+             weatherMap.map.invalidateSize();
+             window.scrollTo(0, 0); // 确保面板完全可见
+            }, 300);
+        }
+    });
+
+            // 展开后确保地图高度自适应
+             if (controlsPanel.classList.contains('expanded')) {
+             setTimeout(() => {
+             weatherMap.map.invalidateSize();
+            }, 300); // 等待过渡动画结束
+       }
+     };
+    </script>
+</body>
+</html>
